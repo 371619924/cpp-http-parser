@@ -8,6 +8,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <set>
+#include <cctype>
 
 #include "httprequest.hpp"
 
@@ -63,6 +64,14 @@ std::string strip(const std::string &s) {
     return stripr(stripl(s));
 }
 
+// 将字符串转换为小写
+std::string to_lower(const std::string &s) {
+    std::string lower_case;
+    lower_case.reserve(s.size());
+    std::transform(s.begin(), s.end(), std::back_inserter(lower_case), [](unsigned char c) { return std::tolower(c); });
+    return lower_case;
+}
+
 
 
 HTTPRequest::HTTPRequest(std::string request){
@@ -70,10 +79,6 @@ HTTPRequest::HTTPRequest(std::string request){
   if (request.empty()) {
     throw MalformedRequestException("Must have at least a command");
   }
-
-  
- 
-
   std::istringstream stream(request);
   std::string line;
   if (std::getline(stream, line)) {
@@ -104,8 +109,8 @@ HTTPRequest::HTTPRequest(std::string request){
       if (pos != std::string::npos) {
                 // 打印解析的头部
       std::cout << "Parsing header: " << line << std::endl;
-      std::string header_name = stripl(line.substr(0, pos));
-      std::string header_value = stripr(line.substr(pos + 1));
+      std::string header_name = to_lower(stripl(line.substr(0, pos)));
+      std::string header_value = strip(line.substr(pos + 1));
       headers[header_name] = std::make_shared<HTTPHeader>(header_name + ": " + header_value);
     } else {
 
@@ -121,27 +126,35 @@ HTTPRequest::HTTPRequest(std::string request){
     // 读取负载
     std::string payload_line;
     while (std::getline(stream, payload_line)) {
-        payload += payload_line + "\n";
+
+      if (!payload_line.empty() || headers_done) { 
+         // 确保仅在头部结束后读取负载
+         payload += payload_line + "\n";
+        }
     }
     if (!payload.empty() && payload.back() == '\n') {
-        payload.pop_back();
+
+      payload.pop_back();
     }
 }
 
 
 
-const std::set<std::string> valid_commands = {"GET", "POST", "HEAD"};
+auto valid_commands = {"GET", "POST", "HEAD"};
 
 void HTTPRequest::parse_command(std::string &command_string){
   std::istringstream stream(command_string);
   stream >> command;
   stream >> resource;
 
+  command = strip(command);   // 修改：移除命令前后的空格
+  resource = strip(resource); // 修改：移除资源路径前后的空格
+
   if (std::find(valid_commands.begin(), valid_commands.end(), command) == valid_commands.end()) {
     throw MalformedRequestException("Invalid command: " + command);
   }
 
-  
+ 
 }
 
 // This is the portion for a header.  The name should be the
@@ -155,7 +168,7 @@ HTTPHeader::HTTPHeader(std::string s){
     if (pos == std::string::npos) {
       throw MalformedRequestException("Header missing ':'");
     }
-    name = stripl(s.substr(0, pos));
+    name = to_lower(stripl(s.substr(0, pos))); // 转换为小写
     value = stripr(s.substr(pos + 1));
     
 }
