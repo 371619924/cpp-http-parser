@@ -72,87 +72,108 @@ std::string to_lower(const std::string &s) {
     return lower_case;
 }
 
+// 将字符串转换为大写
+std::string to_upper(const std::string &s) {
+    std::string upper_case;
+    upper_case.reserve(s.size());  // 预留空间以提高性能
+    std::transform(s.begin(), s.end(), std::back_inserter(upper_case), [](unsigned char c) { 
+        return std::toupper(c); 
+    });
+    return upper_case;
+}
 
 
-HTTPRequest::HTTPRequest(std::string request){
+
+
+HTTPRequest::HTTPRequest(std::string request) {
 
   if (request.empty()) {
-    throw MalformedRequestException("Must have at least a command");
+      throw MalformedRequestException("Must have at least a command");
   }
+    
+    
   std::istringstream stream(request);
   std::string line;
-  if (std::getline(stream, line)) {
-        parse_command(line);
-  }
-
   bool first_line = true;
   bool headers_done = false;
 
   while (std::getline(stream, line)) {
 
     if (line.back() == '\r') {
-
-      line.pop_back();
+        line.pop_back();
     }
 
-    if (line.empty()) {
-      headers_done = true;
-      break;  // 结束头部解析
-    }
-
+        // 处理首行，避免重复调用 parse_command
     if (first_line) {
-      parse_command(line);
-      first_line = false;
-    } else {
+        parse_command(line);
+        first_line = false;
+        continue;  // 跳过本次循环，避免进入 else 分支
+     }
 
-      auto pos = line.find(':');
-      if (pos != std::string::npos) {
-                // 打印解析的头部
-      std::cout << "Parsing header: " << line << std::endl;
-      std::string header_name = to_lower(stripl(line.substr(0, pos)));
-      std::string header_value = strip(line.substr(pos + 1));
-      headers[header_name] = std::make_shared<HTTPHeader>(header_name + ": " + header_value);
-    } else {
-
-      throw MalformedRequestException("Header missing ':'");
-    }
-   }
- }
-
-    if (!headers_done) {
-        throw MalformedRequestException("Headers not properly terminated");
+    // 检查是否为空行，结束头部解析
+    if (line.empty()) {
+        headers_done = true;
+        break;
     }
 
-    // 读取负载
-    std::string payload_line;
-    while (std::getline(stream, payload_line)) {
+        // 处理头部
+    auto pos = line.find(':');
+    if (pos != std::string::npos) {
+        std::cout << "Parsing header: " << line << std::endl;
+        std::string header_name = to_lower(stripl(line.substr(0, pos)));
+        std::string header_value = strip(line.substr(pos + 1));
 
-      if (!payload_line.empty() || headers_done) { 
-         // 确保仅在头部结束后读取负载
-         payload += payload_line + "\n";
+        // 检查重复头部
+        if (headers.find(header_name) != headers.end()) {
+            throw MalformedRequestException("No duplicate headers!");
         }
-    }
-    if (!payload.empty() && payload.back() == '\n') {
 
-      payload.pop_back();
+        headers[header_name] = std::make_shared<HTTPHeader>(header_name + ": " + header_value);
+    } else {
+        throw MalformedRequestException("Header missing ':'");
     }
 }
 
+if (!headers_done) {
+    throw MalformedRequestException("Headers not properly terminated");
+}
 
+    // 读取负载
+std::string payload_line;
+while (std::getline(stream, payload_line)) {
+    if (!payload_line.empty() || headers_done) {
+        payload += payload_line + "\n";
+    }
+  }
+
+if (!payload.empty() && payload.back() == '\n') {
+    payload.pop_back();
+}
+}
 
 auto valid_commands = {"GET", "POST", "HEAD"};
 
 void HTTPRequest::parse_command(std::string &command_string){
   std::istringstream stream(command_string);
+  std::string version;
   stream >> command;
   stream >> resource;
-
+  
+  command = to_upper(strip(command));
   command = strip(command);   // 修改：移除命令前后的空格
   resource = strip(resource); // 修改：移除资源路径前后的空格
+
+  if (stream.fail() || !version.empty() || stream.rdbuf()->in_avail() != 0) {
+        throw MalformedRequestException("Only one space separating components in the command!");
+    }
 
   if (std::find(valid_commands.begin(), valid_commands.end(), command) == valid_commands.end()) {
     throw MalformedRequestException("Invalid command: " + command);
   }
+
+  if (version != "HTTP/1.1") {
+        throw MalformedRequestException("Must be HTTP/1.1 exactly");
+    }
 
  
 }
