@@ -3,6 +3,7 @@
 #include <memory>
 #include <map>
 #include <vector>
+#include <string>
 #include <algorithm>
 #include <ranges>
 #include <sstream>
@@ -41,141 +42,84 @@
 
 
 
-// 去除左侧空格
-std::string stripl(const std::string &s) {
-    size_t start = 0;
-    while (start < s.size() && std::isspace(s[start])) {
-        ++start;
-    }
-    return s.substr(start);
-}
 
-// 去除右侧空格
-std::string stripr(const std::string &s) {
-    size_t end = s.size();
-    while (end > 0 && std::isspace(s[end - 1])) {
-        --end;
-    }
-    return s.substr(0, end);
-}
-
-// 去除两侧空格
-std::string strip(const std::string &s) {
-    return stripr(stripl(s));
-}
-
-// 将字符串转换为小写
-std::string to_lower(const std::string &s) {
-    std::string lower_case;
-    lower_case.reserve(s.size());
-    std::transform(s.begin(), s.end(), std::back_inserter(lower_case), [](unsigned char c) { return std::tolower(c); });
-    return lower_case;
-}
-
-// 将字符串转换为大写
-std::string to_upper(const std::string &s) {
-    std::string upper_case;
-    upper_case.reserve(s.size());  // 预留空间以提高性能
-    std::transform(s.begin(), s.end(), std::back_inserter(upper_case), [](unsigned char c) { 
-        return std::toupper(c); 
-    });
-    return upper_case;
+// Trims leading and trailing whitespace from the string
+std::string trim(const std::string &s) {
+    size_t start = s.find_first_not_of(" \t");// Find the first non-whitespace character
+    size_t end = s.find_last_not_of(" \t");// Find the last non-whitespace character
+    return (start == std::string::npos) ? "" : s.substr(start, end - start + 1);// Return trimmed substring
 }
 
 
 
 
 HTTPRequest::HTTPRequest(std::string request) {
-
-  if (request.empty()) {
-      throw MalformedRequestException("Must have at least a command");
-  }
-    
-    
-  std::istringstream stream(request);
-  std::string line;
-  bool first_line = true;
-  bool headers_done = false;
-
-  while (std::getline(stream, line)) {
-
-    if (line.back() == '\r') {
-        line.pop_back();
+    // Find the end of the headers by searching for the double CRLF sequence
+    size_t headerEnd = request.find("\r\n\r\n");
+    if (headerEnd == std::string::npos) {
+        // If not found, throw a MalformedRequestException
+        throw MalformedRequestException("Malformed request: missing end of headers.");
     }
 
-        // 处理首行，避免重复调用 parse_command
-    if (first_line) {
-        parse_command(line);
-        first_line = false;
-        continue;  // 跳过本次循环，避免进入 else 分支
-     }
+    // Parse the first line to get the command and resource
+    std::string firstLine = request.substr(0, request.find("\r\n"));// Get the first line of the request
+    std::istringstream firstLineStream(firstLine);// Create a stream to parse the first line
+    std::string method, resource, version;// Variables to hold the command, resource, and version
 
-    // 检查是否为空行，结束头部解析
-    if (line.empty()) {
-        headers_done = true;
-        break;
-    }
+    // Read the first line
+    firstLineStream >> method >> resource >> version;
 
-        // 处理头部
-    auto pos = line.find(':');
-    if (pos != std::string::npos) {
-        std::cout << "Parsing header: " << line << std::endl;
-        std::string header_name = to_lower(stripl(line.substr(0, pos)));
-        std::string header_value = strip(line.substr(pos + 1));
+    // Parse the command
+    parse_command(method);
 
-        // 检查重复头部
-        if (headers.find(header_name) != headers.end()) {
-            throw MalformedRequestException("No duplicate headers!");
+    // Set the resource
+    resource = trim(resource);
+    this->resource = resource;
+
+    // Parse headers
+    size_t start = firstLine.length() + 2; // Start after the command line and the first "\r\n"
+    for (size_t i = start; i < headerEnd; ++i) {
+        // Check for '\n' and the previous character was '\r'
+        if (request[i] == '\n' && i > 0 && request[i - 1] == '\r') {
+            // Extract the header line
+            std::string header_line = request.substr(start, i - start - 1);
+            std::shared_ptr<HTTPHeader> header = std::make_shared<HTTPHeader>(header_line);
+            headers[header->get_name()] = header; // Store header in the map
+
+            // Update the start position for the next header
+            start = i + 1;
         }
+    }
 
-        headers[header_name] = std::make_shared<HTTPHeader>(header_name + ": " + header_value);
+    // Handle the last header line before "\r\n\r\n"
+    if (start < headerEnd) {
+        std::string header_line = request.substr(start, headerEnd - start);
+        std::shared_ptr<HTTPHeader> header = std::make_shared<HTTPHeader>(header_line);
+        headers[header->get_name()] = header;
+    }
+
+    // Extract the payload
+    payload = request.substr(headerEnd + 4); // 4 accounts for the length of "\r\n\r\n"
+
+
+
+
+    
+}
+
+    
+const std::set<std::string> valid_commands = {"GET", "POST", "HEAD"};
+
+
+void HTTPRequest::parse_command(std::string &command_string) {
+    command_string = trim(command_string); // Trim whitespace
+
+    // Check if the command is valid
+    if (valid_commands.find(command_string) != valid_commands.end()) {
+        command = command_string; // Store the valid command
     } else {
-        throw MalformedRequestException("Header missing ':'");
+        throw std::invalid_argument("Invalid HTTP command: " + command_string);
     }
-}
-
-if (!headers_done) {
-    throw MalformedRequestException("Headers not properly terminated");
-}
-
-    // 读取负载
-std::string payload_line;
-while (std::getline(stream, payload_line)) {
-    if (!payload_line.empty() || headers_done) {
-        payload += payload_line + "\n";
-    }
-  }
-
-if (!payload.empty() && payload.back() == '\n') {
-    payload.pop_back();
-}
-}
-
-auto valid_commands = {"GET", "POST", "HEAD"};
-
-void HTTPRequest::parse_command(std::string &command_string){
-  std::istringstream stream(command_string);
-  std::string version;
-  stream >> command;
-  stream >> resource;
-  
-  command = to_upper(strip(command));
-  command = strip(command);   // 修改：移除命令前后的空格
-  resource = strip(resource); // 修改：移除资源路径前后的空格
-
-  if (stream.fail() || !version.empty() || stream.rdbuf()->in_avail() != 0) {
-        throw MalformedRequestException("Only one space separating components in the command!");
-    }
-
-  if (std::find(valid_commands.begin(), valid_commands.end(), command) == valid_commands.end()) {
-    throw MalformedRequestException("Invalid command: " + command);
-  }
-
-  if (version != "HTTP/1.1") {
-        throw MalformedRequestException("Must be HTTP/1.1 exactly");
-    }
-
- 
 }
 
 // This is the portion for a header.  The name should be the
@@ -184,12 +128,19 @@ void HTTPRequest::parse_command(std::string &command_string){
 // any internal whitespace but we arent' checking for that.
 
 // The value is ALL the data after the :, including any whitespace!
+
+
 HTTPHeader::HTTPHeader(std::string s){
-    auto pos = s.find(':');
-    if (pos == std::string::npos) {
-      throw MalformedRequestException("Header missing ':'");
+    size_t colon_pos = s.find(':');
+    if (colon_pos == std::string::npos) {
+        throw std::invalid_argument("Invalid header format: no colon found.");
     }
-    name = to_lower(stripl(s.substr(0, pos))); // 转换为小写
-    value = stripr(s.substr(pos + 1));
-    
+
+    // Extract the header name and trim whitespace
+    name = trim(s.substr(0, colon_pos));
+    std::transform(name.begin(), name.end(), name.begin(), ::tolower); // Convert to lowercase
+
+    // Extract the header value (everything after the colon)
+    value = s.substr(colon_pos + 1);
+    value = trim(value); // Trim leading whitespace for the value
 }
