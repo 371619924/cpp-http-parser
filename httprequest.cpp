@@ -47,27 +47,36 @@
 std::string trim(const std::string &s) {
     size_t start = s.find_first_not_of(" \t");// Find the location of first non-whitespace character
     size_t end = s.find_last_not_of(" \t");// Find the location of last non-whitespace character
-    return (start == std::string::npos) ? "" : s.substr(start, end - start + 1);// Return trimmed substring
+    return (start == std::string::npos) ? "" : s.substr(start, end - start + 1);// Return trimmed substring  start == std::string::npos means the state of not finding
 }
 
 
 
 
 HTTPRequest::HTTPRequest(std::string request) {
-    // Find the end of the headers by searching for the double CRLF sequence
-    size_t headerEnd = request.find("\r\n\r\n");
+    // Find the location of end of the headers by searching for the double CRLF sequence
+    size_t headerEnd = request.find("\r\n\r\n");// find is &s (location)
     if (headerEnd == std::string::npos) {
         // If not found, throw a MalformedRequestException
-        throw MalformedRequestException("Malformed request: missing end of headers.");
+        throw MalformedRequestException("fail");
     }
 
     // Parse the first line to get the command and resource
-    std::string firstLine = request.substr(0, request.find("\r\n"));// Get the first line of the request
+    std::string firstLine = request.substr(0, request.find("\r\n"));// Get the first line of the request  substr is extract not include \r\n
     if (firstLine.empty()) {
 
-        throw MalformedRequestException("Must have at least a command");
+        throw MalformedRequestException("fail");
 }
-    
+
+    // Now split the first line and ensure only one space between components
+    size_t firstSpace = firstLine.find(' ');
+    size_t secondSpace = firstLine.find(' ', firstSpace + 1);
+    size_t thirdSpace = firstLine.find(' ', secondSpace + 1);
+
+    // If there's no space or more than two spaces in the command line, throw an exception
+    if (firstSpace == std::string::npos || secondSpace == std::string::npos || thirdSpace != std::string::npos) {
+        throw MalformedRequestException("fail");
+    }
     
     std::istringstream firstLineStream(firstLine);// Create a stream to parse the first line
     std::string method, resource, version;// Variables to hold the command, resource, and version
@@ -75,14 +84,15 @@ HTTPRequest::HTTPRequest(std::string request) {
     // Read the first line
     firstLineStream >> method >> resource >> version;
 
+    
 
     // Check that the version is HTTP/1.1
     if (version != "HTTP/1.1") {
-        throw MalformedRequestException("Must be HTTP/1.1 exactly");
+        throw MalformedRequestException("fail");
     }
     // Ensure only one space between components
     if (method.empty() || resource.empty() || version.empty()) {
-        throw MalformedRequestException("Only one space separating components in the command!");
+        throw MalformedRequestException("fail");
     }
 
     // Parse the command
@@ -100,31 +110,25 @@ HTTPRequest::HTTPRequest(std::string request) {
     size_t start = firstLine.length() + 2; // Start after the command line and the first "\r\n"
     for (size_t i = start; i < headerEnd; ++i) {
         // Check for '\n' and the previous character was '\r'
-        if (request[i] == '\n' && i > 0 && request[i - 1] == '\r') {
+        if (request[i] == '\n' && i > 0 && request[i - 1] == '\r') { // request[i] find the character that index is i
             // Extract the header line
             std::string header_line = request.substr(start, i - start - 1);
 
             if (header_line.empty()) {
-                throw MalformedRequestException("Empty header line detected.");
+                throw MalformedRequestException("fail");
             }
 
             std::shared_ptr<HTTPHeader> header = std::make_shared<HTTPHeader>(header_line);
             if (headers.find(header->get_name()) != headers.end()) {
-
-                throw MalformedRequestException("No duplicate headers!");
+                throw MalformedRequestException("fail");
         }
             headers[header->get_name()] = header; // Store header in the map
-
-            
-
-         
-            
 
             // Update the start position for the next header
             start = i + 1;
         }
     }
-
+//read
     // Handle the last header line before "\r\n\r\n"
     if (start < headerEnd) {
         std::string header_line = request.substr(start, headerEnd - start);
@@ -133,7 +137,7 @@ HTTPRequest::HTTPRequest(std::string request) {
         std::shared_ptr<HTTPHeader> header = std::make_shared<HTTPHeader>(header_line);
         if (headers.find(header->get_name()) != headers.end()) {
 
-           throw MalformedRequestException("No duplicate headers!");
+           throw MalformedRequestException("fail");
         }
         headers[header->get_name()] = header;
         
@@ -160,7 +164,7 @@ void HTTPRequest::parse_command(std::string &command_string) {
     if (valid_commands.find(command_string) != valid_commands.end()) {
         command = command_string; // Store the valid command
     } else {
-        throw std::invalid_argument("Invalid HTTP command: " + command_string);
+        throw MalformedRequestException("Invalid HTTP command: " + command_string);
     }
      
 }
@@ -176,7 +180,7 @@ void HTTPRequest::parse_command(std::string &command_string) {
 HTTPHeader::HTTPHeader(std::string s){
     size_t colon_pos = s.find(':');
     if (colon_pos == std::string::npos) {
-        throw std::invalid_argument("Invalid header format: no colon found.");
+        throw MalformedRequestException("fail");
     }
 
     // Extract the header name and trim whitespace
