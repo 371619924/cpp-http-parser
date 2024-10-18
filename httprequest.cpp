@@ -55,7 +55,7 @@ std::string trim(const std::string &s) {
 
 HTTPRequest::HTTPRequest(std::string request) {
     // Find the location of end of the headers by searching for the double CRLF sequence
-    size_t headerEnd = request.find("\r\n\r\n");// find is &s (location)
+    size_t headerEnd = request.find("\r\n\r\n");// Find is &s (location)
     if (headerEnd == std::string::npos) {
         // If not found, throw a MalformedRequestException
         throw MalformedRequestException("fail");
@@ -70,8 +70,8 @@ HTTPRequest::HTTPRequest(std::string request) {
 
     // Now split the first line and ensure only one space between components
     size_t firstSpace = firstLine.find(' ');
-    size_t secondSpace = firstLine.find(' ', firstSpace + 1);
-    size_t thirdSpace = firstLine.find(' ', secondSpace + 1);
+    size_t secondSpace = firstLine.find(' ', firstSpace + 1); // Jump first space, go to next space
+    size_t thirdSpace = firstLine.find(' ', secondSpace + 1); // same 
 
     // If there's no space or more than two spaces in the command line, throw an exception
     if (firstSpace == std::string::npos || secondSpace == std::string::npos || thirdSpace != std::string::npos) {
@@ -127,8 +127,11 @@ HTTPRequest::HTTPRequest(std::string request) {
             // Update the start position for the next header
             start = i + 1;
         }
+
+        // Note: 如果你有一个对象本身，直接使用点操作符 . 来访问它的成员。
+        // 如果你有一个指针，你需要使用箭头操作符 -> 来访问指针指向的对象的成员
     }
-//read
+
     // Handle the last header line before "\r\n\r\n"
     if (start < headerEnd) {
         std::string header_line = request.substr(start, headerEnd - start);
